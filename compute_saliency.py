@@ -120,7 +120,7 @@ def process(explainer, loader, device, args):
 
 
 def main(args):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Choose model
     if args.model == 'densenet121':

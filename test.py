@@ -161,7 +161,7 @@ def evaluate(model, loader, device, args):
 
 
 def main(args):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Choose model
     if args.model == 'densenet121':
@@ -220,8 +220,8 @@ def parse_args():
 
     parser.add_argument('--dataset', default='covid',
                         help='Dataset to use (covid or isic)')
-    parser.add_argument('--test-dataset-dir', default='/data/brian.hu/COVID/data/test',
-                        help='Test dataset directory path')
+    parser.add_argument('--test-dataset-dir', default='./data',
+                    help='Test dataset directory path')
     parser.add_argument('--test-image-list', default='./test_COVIDx4.txt',
                         help='Test image list')
     parser.add_argument('--mask-dir', default=None,
