@@ -1,2 +1,12 @@
 /datasets
 data/
+
+# Bỏ qua toàn bộ thư mục dữ liệu nặng
+train/
+test/
+*.zip
+
+# Bỏ qua các file checkpoint hoặc file dữ liệu tạm
+*.npy
+*.pth
+data/
