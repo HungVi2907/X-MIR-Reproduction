@@ -2,6 +2,7 @@ import os
 import numpy as np
 
 import torch
+from utils.device import get_device
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
@@ -76,7 +77,7 @@ def evaluate(model, train_loader, test_loader, device, args):
 
 
 def main(args):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
 
     # Choose model
     if args.model == 'densenet121':

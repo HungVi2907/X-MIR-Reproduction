@@ -2,6 +2,7 @@ import os
 import random
 
 import torch
+from utils.device import get_device
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
@@ -101,7 +102,7 @@ def main(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     p = args.labels_per_batch if not args.anomaly else args.labels_per_batch - 1
     k = args.samples_per_label
     batch_size = p * k

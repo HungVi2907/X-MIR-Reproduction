@@ -8,6 +8,7 @@ import torch.nn as nn
 from model import DenseNet121
 from torchvision import transforms
 from evaluation import CausalMetric, gkern
+from utils.device import get_device
 
 
 # NOTE: Edit the dataset_type and path to model_weights here
@@ -24,7 +25,7 @@ class InsDel():
         ksig = math.sqrt(50)
         kern = gkern(klen, ksig)
         def blur(x): return nn.functional.conv2d(
-            x, kern.cpu(), padding=klen//2)
+            x, kern.to(get_device()), padding=klen//2)
         self.insertion = CausalMetric(
             self.model, 'ins', net_in_size, substrate_fn=blur)
         self.deletion = CausalMetric(
@@ -100,7 +101,7 @@ class AverageCounter():
 def prep_image_(file_n):
     query_image = Image.open(os.path.join(
         query_img_path, file_n)).convert('RGB')
-    query_image_tensor = transform(query_image).unsqueeze_(0).cpu()
+    query_image_tensor = transform(query_image).unsqueeze_(0).to(get_device())
     return query_image_tensor
 
 
@@ -108,7 +109,7 @@ model = DenseNet121()
 model_weights = './checkpoints/isic_densenet121_embed_256_seed_0_epoch_20_ckpt.pth'
 model.load_state_dict(torch.load(model_weights, map_location='cpu'), strict=False)
 model = model.eval()
-model = model.cpu()
+model = model.to(get_device())
 
 # Logging counter
 ins_avg_c = AverageCounter()

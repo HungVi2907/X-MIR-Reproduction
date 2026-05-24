@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from utils.device import get_device
 
 from sklearn import svm
 from sklearn.neighbors import KNeighborsClassifier
@@ -59,14 +60,14 @@ class SBSM(nn.Module):
                 i += 1
         masks = masks.reshape(-1, 1, *self.input_size)
         np.save(savepath, masks)
-        self.register_buffer('masks', torch.from_numpy(masks).cuda())
+        self.register_buffer('masks', torch.from_numpy(masks).to(get_device()))
         self.N = self.masks.shape[0]
         self.window_size = window_size
         self.stride = stride
 
     def load_masks(self, filepath):
         masks = np.load(filepath)
-        self.register_buffer('masks', torch.from_numpy(masks).cuda())
+        self.register_buffer('masks', torch.from_numpy(masks).to(get_device()))
         self.N = self.masks.shape[0]
 
     def weighted_avg(self, K):
@@ -337,7 +338,7 @@ class SBSMFeature(nn.Module):
                 masks[i, r1:r2, c1:c2] = 0
                 i += 1
         masks = masks.reshape(-1, 1, *input_size)
-        self.register_buffer('masks', torch.from_numpy(masks).cuda())
+        self.register_buffer('masks', torch.from_numpy(masks).to(get_device()))
         self.N = self.masks.shape[0]
         self.window_size = window_size
         self.stride = stride
