@@ -173,7 +173,7 @@ def main(args):
 
     if os.path.isfile(args.resume):
         print("=> loading checkpoint")
-        checkpoint = torch.load(args.resume)
+        checkpoint = torch.load(args.resume, map_location='cpu')
         if 'state-dict' in checkpoint:
             checkpoint = checkpoint['state-dict']
         model.load_state_dict(checkpoint, strict=False)

@@ -12,7 +12,7 @@ from evaluation import CausalMetric, gkern
 
 # NOTE: Edit the dataset_type and path to model_weights here
 dataset_type = 'covid'
-model_weights = '/data/brian.hu/covid_saliency/covid_densenet121_embed_256_seed_1_epoch_20_ckpt.pth'
+model_weights = './anomaly/'
 
 
 class InsDel():
@@ -24,12 +24,12 @@ class InsDel():
         ksig = math.sqrt(50)
         kern = gkern(klen, ksig)
         def blur(x): return nn.functional.conv2d(
-            x, kern.cuda(), padding=klen//2)
+            x, kern.cpu(), padding=klen//2)
         self.insertion = CausalMetric(
             self.model, 'ins', net_in_size, substrate_fn=blur)
         self.deletion = CausalMetric(
             self.model, 'del', net_in_size, substrate_fn=torch.zeros_like)
-
+ 
     def evaluate(self, new_sal, ret_image):
         """
         This function evaluates an image and its saliency map for deletion 
@@ -46,10 +46,10 @@ class InsDel():
         new_sal = torch.from_numpy(new_sal).float()
         score_del = 0
         zero_cnt_del = 0
-        score_del, zero_cnt_ins = self.deletion.single_run(self.q_image.cuda(),
-                                                           ret_image.cuda(), new_sal, verbose=0)
-        score_ins, zero_cnt_del = self.insertion.single_run(self.q_image.cuda(),
-                                                            ret_image.cuda(),  new_sal, verbose=0)
+        score_del, zero_cnt_ins = self.deletion.single_run(self.q_image.cpu(),
+                                                           ret_image.cpu(), new_sal, verbose=0)
+        score_ins, zero_cnt_del = self.insertion.single_run(self.q_image.cpu(),
+                                                            ret_image.cpu(),  new_sal, verbose=0)
         return score_del, score_ins, zero_cnt_ins, zero_cnt_del
 
     def load_query(self, query_image):
@@ -100,14 +100,15 @@ class AverageCounter():
 def prep_image_(file_n):
     query_image = Image.open(os.path.join(
         query_img_path, file_n)).convert('RGB')
-    query_image_tensor = transform(query_image).unsqueeze_(0).cuda()
+    query_image_tensor = transform(query_image).unsqueeze_(0).cpu()
     return query_image_tensor
 
 
 model = DenseNet121()
-model.load_state_dict(torch.load(model_weights), strict=False)
+model_weights = './checkpoints/isic_densenet121_embed_256_seed_0_epoch_20_ckpt.pth'
+model.load_state_dict(torch.load(model_weights, map_location='cpu'), strict=False)
 model = model.eval()
-model = model.cuda()
+model = model.cpu()
 
 # Logging counter
 ins_avg_c = AverageCounter()
@@ -121,8 +122,8 @@ class_labels = {}
 
 if dataset_type == 'covid':
     # NOTE: Edit the path to saliency maps and images here
-    main_path = '/data/brian.hu/covid_saliency/simatt/'
-    query_img_path = '/data/brian.hu/COVID/data/test/'
+    main_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
+    query_img_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
     valid_class = ['pneumonia', 'normal']
     # Unravel labels here
     with open('test_COVIDx4.txt', 'r') as f:
@@ -135,8 +136,8 @@ if dataset_type == 'covid':
 
 if dataset_type == 'isic':
     # NOTE: Edit the path to saliency maps and images here
-    main_path = '/data/brian.hu/isic_saliency/sbsm'
-    query_img_path = '/data/brian.hu/isic/ISIC-2017_Test_v2_Data'
+    main_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
+    query_img_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
     import pandas as pd
     valid_class = ['melanoma', 'seborrheic_keratosis']
     df = pd.read_csv('./ISIC-2017_Test_v2_Part3_GroundTruth_balanced.csv')
@@ -165,23 +166,39 @@ f2 = open('./key_list_wacv_test_simatt.json', 'w')
 ins_del_q_dict = {}
 key_dict = {}
 get_insert_dele = InsDel(model)
-for file_n in os.listdir(main_path):
-    print(file_n)
+# ==================== ĐOẠN SỬA ĐỔI CHỈNH SỬA TẠI CHỖ ====================
+for file_n_raw in os.listdir(main_path):
+    # 1. Bộ lọc thông minh: CHỈ nhặt các file ma trận số liệu thô (.npy)
+    # Tự động bỏ qua hoàn toàn ảnh gốc (.jpg, .png), file cấu hình hoặc file .csv
+    if not file_n_raw.endswith('.npy'):
+        continue
+        
+    # 2. Khôi phục tên ảnh gốc tương ứng (Bỏ đuôi .npy đi)
+    # Ví dụ: 'ISIC_0012178.jpg.npy' -> 'ISIC_0012178.jpg' hoặc 'anh_1.png.npy' -> 'anh_1.png'
+    # Việc gán ngược lại vào biến 'file_n' giúp toàn bộ logic phía dưới của tác giả chạy bình thường
+    file_n = file_n_raw.replace('.npy', '')
+    print(f"Processing: {file_n}")
+    
     query_image_tensor = prep_image_(file_n)
-    retrieval_names = os.listdir(os.path.join(main_path, file_n))
+    
+    # 3. Giả lập danh sách: Thay vì quét thư mục con, ta chỉ định đích danh file .npy hiện tại
+    retrieval_names = [file_n_raw]
     for r_n in retrieval_names:
         try:
             key_dict[file_n.split('/')[0].split('.')[0]] = [r_n]
+            # SỬA ĐƯỜNG DẪN TẠI ĐÂY: Đọc trực tiếp từ main_path, bỏ bớt cấp thư mục con 'file_n' bị thừa
             sal_map[file_n.split(
-                '/')[0].split('.')[0]].append(np.load(os.path.join(main_path, file_n, r_n)))
+                '/')[0].split('.')[0]].append(np.load(os.path.join(main_path, r_n)))
             ret_map[file_n.split('/')[0].split('.')[0]].append(prep_image_(os.path.join(query_img_path,
-                                                                                        '.'.join(r_n.split('.')[:-1]))))
+                                                                                                '.'.join(r_n.split('.')[:-1]))))
         except KeyError:
             key_dict[file_n.split('/')[0].split('.')[0]].append(r_n)
+            # SỬA ĐƯỜNG DẪN TẠI ĐÂY TƯƠNG TỰ CHO PHẦN BẪY LỖI
             sal_map[file_n.split('/')[0].split('.')[0]
-                    ] = [np.load(os.path.join(main_path, file_n, r_n))]
+                    ] = [np.load(os.path.join(main_path, r_n))]
             ret_map[file_n.split('/')[0].split('.')[0]] = [prep_image_(os.path.join(query_img_path,
-                                                                                    '.'.join(r_n.split('.')[:-1])))]
+                                                                                        '.'.join(r_n.split('.')[:-1])))]
+# ========================================================================
 
     # Compute local deletion and insertion metric
     insertion, deletion, i_in, i_del = get_insert_dele.forward(query_image_tensor, ret_map[file_n.split(
@@ -198,8 +215,11 @@ for file_n in os.listdir(main_path):
     except KeyError:
         ins_del_q_dict[file_n.split(
             '/')[0].split('.')[0]] = [insertion, deletion]
-    ins_avg_c.store(class_labels[file_n], avg_insert)
-    del_avg_c.store(class_labels[file_n], avg_del)
+    if file_n in class_labels:
+        ins_avg_c.store(class_labels[file_n], avg_insert)
+        del_avg_c.store(class_labels[file_n], avg_del)
+    else:
+        print(f"[-] Bỏ qua {file_n} vì không có tên trong file CSV balanced.")
     del sal_map[file_n.split('/')[0].split('.')[0]]
 
 json.dump(ins_del_q_dict, f)

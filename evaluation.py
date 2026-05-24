@@ -76,7 +76,7 @@ class CausalMetric():
         Return:
             scores (nd.array): Array containing scores at every step.
         """
-        q_feat = self.model(img_tensor.cuda())
+        q_feat = self.model(img_tensor.cpu())
         n_steps = (HW + self.step - 1) // self.step
 
         if self.mode == 'del':
@@ -97,7 +97,7 @@ class CausalMetric():
         salient_order = torch.flip(salient_order, [0, 1])
         zero_cntr = 0
         for i in range(n_steps+1):
-            r_feat = self.model(start.cuda())
+            r_feat = self.model(start.cpu())
             c_dist = torch.nn.functional.cosine_similarity(q_feat, r_feat)[0]
             diff_dist = c_dist
             if diff_dist < 0:
