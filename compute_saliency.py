@@ -82,7 +82,8 @@ def process(explainer, loader, device, args):
                 os.makedirs(base_path)
 
             for s, p in zip(salmaps, paths):
-                np.save(os.path.join(base_path, p.split('/')[-1]), s)
+                os.makedirs(base_path, exist_ok=True)
+                np.save(os.path.join(base_path, os.path.basename(p)), s)
     else:
         # Load results
         results = np.load(args.results)
@@ -116,7 +117,8 @@ def process(explainer, loader, device, args):
                     os.makedirs(base_path)
 
                 for s, p in zip(reversed(salmaps), reversed(paths)):
-                    np.save(os.path.join(base_path, p.split('/')[-1]), s)
+                    os.makedirs(base_path, exist_ok=True)
+                    np.save(os.path.join(base_path, os.path.basename(p)), s)
 
 
 def main(args):

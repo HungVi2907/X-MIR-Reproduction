@@ -9,7 +9,7 @@ from model import DenseNet121
 from torchvision import transforms
 from evaluation import CausalMetric, gkern
 from utils.device import get_device
-
+from pathlib import Path
 
 # NOTE: Edit the dataset_type and path to model_weights here
 dataset_type = 'covid'
@@ -122,35 +122,21 @@ query_image_list = []
 class_labels = {}
 
 if dataset_type == 'covid':
-    # NOTE: Edit the path to saliency maps and images here
-    main_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
-    query_img_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
+    # Dùng Path để triệt tiêu lỗi gạch chéo ngược (\) trên Windows
+    main_path = Path(r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\saliency_results\test')
+    query_img_path = Path(r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\test')
     valid_class = ['pneumonia', 'normal']
-    # Unravel labels here
-    with open('test_COVIDx4.txt', 'r') as f:
+    
+    with open('test_split.txt', 'r') as f:
         for line in f.readlines():
             label = line.split()[2]
             if label not in valid_class:
                 label = 'covid'
-            q_na = line.split()[1]
+            # Tách lấy tên file phòng trường hợp trong file txt ghi là 'test/anh.png'
+            q_na = line.split()[1].split('/')[-1].split('\\')[-1] 
             class_labels[q_na] = label
 
-if dataset_type == 'isic':
-    # NOTE: Edit the path to saliency maps and images here
-    main_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
-    query_img_path = r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\data\ISIC2017\ISIC-2017_Test_v2_Data'
-    import pandas as pd
-    valid_class = ['melanoma', 'seborrheic_keratosis']
-    df = pd.read_csv('./ISIC-2017_Test_v2_Part3_GroundTruth_balanced.csv')
-    for kj, im_name in enumerate(df['image_id']):
-        if (df['melanoma'][kj] + df['seborrheic_keratosis'][kj]) > 0:
-            if df['melanoma'][kj]:
-                class_labels[im_name+'.jpg'] = 'melanoma'
-            else:
-                class_labels[im_name+'.jpg'] = 'seborrheic_keratosis'
-        else:
-            class_labels[im_name+'.jpg'] = 'nevi'
-
+# =============== ĐOẠN ĐƯỢC CỨU SỐNG ===============
 transform = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop((224, 224)),
@@ -160,70 +146,77 @@ transform = transforms.Compose([
         std=[0.229, 0.224, 0.225]
     )
 ])
+# ==================================================
 
-# NOTE: Edit the final output json files here
-f = open('./inser_dele_wacv_test_simatt.json', 'w')
-f2 = open('./key_list_wacv_test_simatt.json', 'w')
+# Đổi tên file xuất ra để an toàn
+f = open('./inser_dele_covid_simatt.json', 'w')
+f2 = open('./key_list_covid_simatt.json', 'w')
+
 ins_del_q_dict = {}
 key_dict = {}
 get_insert_dele = InsDel(model)
-# ==================== ĐOẠN SỬA ĐỔI CHỈNH SỬA TẠI CHỖ ====================
-for file_n_raw in os.listdir(main_path):
-    # 1. Bộ lọc thông minh: CHỈ nhặt các file ma trận số liệu thô (.npy)
-    # Tự động bỏ qua hoàn toàn ảnh gốc (.jpg, .png), file cấu hình hoặc file .csv
-    if not file_n_raw.endswith('.npy'):
+
+print(f"\n[BƯỚC 1] Đang quét tìm .npy trong: {main_path}")
+npy_files = list(main_path.rglob('*.npy'))
+print(f"[BƯỚC 2] Số lượng file .npy tìm thấy: {len(npy_files)}\n")
+
+if len(npy_files) == 0:
+    print("!!! CẢNH BÁO ĐỎ: Python không nhìn thấy bất kỳ file .npy nào !!!")
+    exit()
+
+for sal_path in npy_files:
+    file_n_raw = sal_path.name # Lấy tên (VD: 3d895c52.png.npy)
+    file_n = file_n_raw.replace('.npy', '')
+    base_name = file_n.split('.')[0]
+    
+    img_path = query_img_path / file_n
+    if not img_path.exists():
+        print(f"[-] BỎ QUA: Không tìm thấy ảnh gốc tại {img_path}")
         continue
         
-    # 2. Khôi phục tên ảnh gốc tương ứng (Bỏ đuôi .npy đi)
-    # Ví dụ: 'ISIC_0012178.jpg.npy' -> 'ISIC_0012178.jpg' hoặc 'anh_1.png.npy' -> 'anh_1.png'
-    # Việc gán ngược lại vào biến 'file_n' giúp toàn bộ logic phía dưới của tác giả chạy bình thường
-    file_n = file_n_raw.replace('.npy', '')
     print(f"Processing: {file_n}")
+    query_image_tensor = prep_image_(str(img_path.name)) # Đọc ảnh gốc
     
-    query_image_tensor = prep_image_(file_n)
+    # Khởi tạo Dictionary
+    if base_name not in sal_map:
+        sal_map[base_name] = []
+        ret_map[base_name] = []
+        key_dict[base_name] = []
+        
+    sal_map[base_name].append(np.load(str(sal_path)))
+    ret_map[base_name].append(query_image_tensor)
+    key_dict[base_name].append(file_n_raw)
+
+    # Chạy tính toán
+    insertion, deletion, i_in, i_del = get_insert_dele.forward(
+        query_image_tensor, 
+        ret_map[base_name], 
+        sal_map[base_name]
+    )
+
+    avg_insert = sum(insertion) / len(insertion)
+    avg_del = sum(deletion) / len(deletion)
     
-    # 3. Giả lập danh sách: Thay vì quét thư mục con, ta chỉ định đích danh file .npy hiện tại
-    retrieval_names = [file_n_raw]
-    for r_n in retrieval_names:
-        try:
-            key_dict[file_n.split('/')[0].split('.')[0]] = [r_n]
-            # SỬA ĐƯỜNG DẪN TẠI ĐÂY: Đọc trực tiếp từ main_path, bỏ bớt cấp thư mục con 'file_n' bị thừa
-            sal_map[file_n.split(
-                '/')[0].split('.')[0]].append(np.load(os.path.join(main_path, r_n)))
-            ret_map[file_n.split('/')[0].split('.')[0]].append(prep_image_(os.path.join(query_img_path,
-                                                                                                '.'.join(r_n.split('.')[:-1]))))
-        except KeyError:
-            key_dict[file_n.split('/')[0].split('.')[0]].append(r_n)
-            # SỬA ĐƯỜNG DẪN TẠI ĐÂY TƯƠNG TỰ CHO PHẦN BẪY LỖI
-            sal_map[file_n.split('/')[0].split('.')[0]
-                    ] = [np.load(os.path.join(main_path, r_n))]
-            ret_map[file_n.split('/')[0].split('.')[0]] = [prep_image_(os.path.join(query_img_path,
-                                                                                        '.'.join(r_n.split('.')[:-1])))]
-# ========================================================================
-
-    # Compute local deletion and insertion metric
-    insertion, deletion, i_in, i_del = get_insert_dele.forward(query_image_tensor, ret_map[file_n.split(
-        '/')[0].split('.')[0]], sal_map[file_n.split('/')[0].split('.')[0]])
-
-    avg_insert, avg_del = (sum(insertion)/len(insertion)
-                           ), (sum(deletion)/len(deletion))
-    # Aggerate calculate metric to associated class
-    print(avg_insert, avg_del)
-    try:
-        assert ins_del_q_dict[file_n.split('/')[0].split('.')[0]]
-        ins_del_q_dict[file_n.split(
-            '/')[0].split('.')[0]].append([insertion, deletion])
-    except KeyError:
-        ins_del_q_dict[file_n.split(
-            '/')[0].split('.')[0]] = [insertion, deletion]
+    if base_name not in ins_del_q_dict:
+        ins_del_q_dict[base_name] = []
+    ins_del_q_dict[base_name].append([insertion, deletion])
+    
+    # Khớp nhãn và lưu điểm
     if file_n in class_labels:
         ins_avg_c.store(class_labels[file_n], avg_insert)
         del_avg_c.store(class_labels[file_n], avg_del)
     else:
-        print(f"[-] Bỏ qua {file_n} vì không có tên trong file CSV balanced.")
-    del sal_map[file_n.split('/')[0].split('.')[0]]
+        print(f"  -> [Cảnh báo] Ảnh '{file_n}' không có trong file test_split.txt")
+        
+    # Dọn RAM
+    del sal_map[base_name]
+    del ret_map[base_name]
 
+# Lưu JSON
 json.dump(ins_del_q_dict, f)
 json.dump(key_dict, f2)
+
+print("\n--- KẾT QUẢ ĐÁNH GIÁ (INSERTION) ---")
 print(ins_avg_c.read_Average())
+print("--- KẾT QUẢ ĐÁNH GIÁ (DELETION) ---")
 print(del_avg_c.read_Average())
