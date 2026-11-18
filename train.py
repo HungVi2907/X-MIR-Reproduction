@@ -2,6 +2,7 @@ import os
 import random
 
 import torch
+from utils.device import get_device
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
@@ -101,7 +102,7 @@ def main(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     p = args.labels_per_batch if not args.anomaly else args.labels_per_batch - 1
     k = args.samples_per_label
     batch_size = p * k
@@ -204,7 +205,7 @@ def parse_args():
 
     parser.add_argument('--dataset', default='covid',
                         help='Dataset to use (covid or isic)')
-    parser.add_argument('--dataset-dir', default='/data/brian.hu/COVID/data/',
+    parser.add_argument('--dataset-dir', default='./data',
                         help='Dataset directory path')
     parser.add_argument('--train-image-list', default='./train_split.txt',
                         help='Train image list')

@@ -2,6 +2,7 @@ import os
 import numpy as np
 
 import torch
+from utils.device import get_device
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
@@ -63,8 +64,7 @@ def process(explainer, loader, device, args):
     if args.self_saliency:  # self-saliency
         dataset = ImageListDataSet(
             image_dir='', image_list=loader.dataset.image_names, transform=loader.dataset.transform)
-        loader = DataLoader(dataset, batch_size=args.eval_batch_size *
-                            torch.cuda.device_count(), num_workers=args.workers)
+        loader = DataLoader(dataset, batch_size=1, num_workers=args.workers)
 
         for i, data in enumerate(loader):
             samples, paths = data[0].to(device), data[1]
@@ -82,7 +82,8 @@ def process(explainer, loader, device, args):
                 os.makedirs(base_path)
 
             for s, p in zip(salmaps, paths):
-                np.save(os.path.join(base_path, p.split('/')[-1]), s)
+                os.makedirs(base_path, exist_ok=True)
+                np.save(os.path.join(base_path, os.path.basename(p)), s)
     else:
         # Load results
         results = np.load(args.results)
@@ -94,14 +95,14 @@ def process(explainer, loader, device, args):
             # Transform the query image
             x_q = loader.dataset.transform(
                 Image.open(img)).unsqueeze(0).to(device)
-            x_q = torch.cat([x_q]*torch.cuda.device_count())
+            x_q = tx_q = torch.cat([x_q]*1)
 
             # Redefine loader here for each query image
             x_r = [image_list[i] for i in ind]
             dataset = ImageListDataSet(
                 image_dir='', image_list=x_r, transform=loader.dataset.transform)
-            loader = DataLoader(dataset, batch_size=args.eval_batch_size *
-                                torch.cuda.device_count(), num_workers=args.workers)
+            loader = DataLoader(dataset, batch_size=1
+                                , num_workers=args.workers)
 
             for i, data in enumerate(loader):
                 samples, paths = data[0].to(device), data[1]
@@ -116,11 +117,12 @@ def process(explainer, loader, device, args):
                     os.makedirs(base_path)
 
                 for s, p in zip(reversed(salmaps), reversed(paths)):
-                    np.save(os.path.join(base_path, p.split('/')[-1]), s)
+                    os.makedirs(base_path, exist_ok=True)
+                    np.save(os.path.join(base_path, os.path.basename(p)), s)
 
 
 def main(args):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
 
     # Choose model
     if args.model == 'densenet121':
@@ -132,7 +134,7 @@ def main(args):
 
     if os.path.isfile(args.resume):
         print("=> loading checkpoint")
-        checkpoint = torch.load(args.resume)
+        checkpoint = torch.load(args.resume, map_location='cpu')
         if 'state-dict' in checkpoint:
             checkpoint = checkpoint['state-dict']
         model.load_state_dict(checkpoint, strict=False)
@@ -196,7 +198,7 @@ def main(args):
         raise NotImplementedError('Dataset not supported!')
 
     test_loader = DataLoader(test_dataset,
-                             batch_size=args.eval_batch_size*torch.cuda.device_count(),
+                             batch_size=1,
                              shuffle=False, num_workers=args.workers)
 
     # Compute and save saliency maps

@@ -1,0 +1,20 @@
+# Core Deep Learning Framework (Phù hợp với cấu hình PyTorch 1.9.0 của bài báo)
+# Lưu ý: Nếu dùng GPU NVIDIA, bạn nên cài đặt torch bằng lệnh wheel riêng biệt tùy thuộc vào phiên bản CUDA.
+torch==1.9.0
+torchvision==0.10.0
+
+# Xử lý và phân tích dữ liệu (Đọc file CSV Ground Truth)
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Thư viện Học máy & Tính toán chỉ số đánh giá (Evaluation Metrics)
+scikit-learn>=0.24.0
+scipy>=1.7.0
+
+# Xử lý và tải hình ảnh y tế
+Pillow>=8.2.0
+opencv-python>=4.5.0
+
+# Tiện ích bổ trợ (Hiển thị thanh tiến trình và vẽ biểu đồ Saliency Map)
+tqdm>=4.60.0
+matplotlib>=3.4.0

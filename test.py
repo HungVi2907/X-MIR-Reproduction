@@ -2,6 +2,7 @@ import os
 import numpy as np
 
 import torch
+from utils.device import get_device
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
@@ -161,7 +162,7 @@ def evaluate(model, loader, device, args):
 
 
 def main(args):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
 
     # Choose model
     if args.model == 'densenet121':
@@ -173,7 +174,7 @@ def main(args):
 
     if os.path.isfile(args.resume):
         print("=> loading checkpoint")
-        checkpoint = torch.load(args.resume)
+        checkpoint = torch.load(args.resume, map_location='cpu')
         if 'state-dict' in checkpoint:
             checkpoint = checkpoint['state-dict']
         model.load_state_dict(checkpoint, strict=False)
@@ -220,8 +221,8 @@ def parse_args():
 
     parser.add_argument('--dataset', default='covid',
                         help='Dataset to use (covid or isic)')
-    parser.add_argument('--test-dataset-dir', default='/data/brian.hu/COVID/data/test',
-                        help='Test dataset directory path')
+    parser.add_argument('--test-dataset-dir', default='./data',
+                    help='Test dataset directory path')
     parser.add_argument('--test-image-list', default='./test_COVIDx4.txt',
                         help='Test image list')
     parser.add_argument('--mask-dir', default=None,

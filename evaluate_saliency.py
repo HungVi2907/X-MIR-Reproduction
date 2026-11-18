@@ -8,11 +8,12 @@ import torch.nn as nn
 from model import DenseNet121
 from torchvision import transforms
 from evaluation import CausalMetric, gkern
-
+from utils.device import get_device
+from pathlib import Path
 
 # NOTE: Edit the dataset_type and path to model_weights here
 dataset_type = 'covid'
-model_weights = '/data/brian.hu/covid_saliency/covid_densenet121_embed_256_seed_1_epoch_20_ckpt.pth'
+model_weights = './anomaly/'
 
 
 class InsDel():
@@ -24,12 +25,12 @@ class InsDel():
         ksig = math.sqrt(50)
         kern = gkern(klen, ksig)
         def blur(x): return nn.functional.conv2d(
-            x, kern.cuda(), padding=klen//2)
+            x, kern.to(get_device()), padding=klen//2)
         self.insertion = CausalMetric(
             self.model, 'ins', net_in_size, substrate_fn=blur)
         self.deletion = CausalMetric(
             self.model, 'del', net_in_size, substrate_fn=torch.zeros_like)
-
+ 
     def evaluate(self, new_sal, ret_image):
         """
         This function evaluates an image and its saliency map for deletion 
@@ -46,10 +47,10 @@ class InsDel():
         new_sal = torch.from_numpy(new_sal).float()
         score_del = 0
         zero_cnt_del = 0
-        score_del, zero_cnt_ins = self.deletion.single_run(self.q_image.cuda(),
-                                                           ret_image.cuda(), new_sal, verbose=0)
-        score_ins, zero_cnt_del = self.insertion.single_run(self.q_image.cuda(),
-                                                            ret_image.cuda(),  new_sal, verbose=0)
+        score_del, zero_cnt_ins = self.deletion.single_run(self.q_image.cpu(),
+                                                           ret_image.cpu(), new_sal, verbose=0)
+        score_ins, zero_cnt_del = self.insertion.single_run(self.q_image.cpu(),
+                                                            ret_image.cpu(),  new_sal, verbose=0)
         return score_del, score_ins, zero_cnt_ins, zero_cnt_del
 
     def load_query(self, query_image):
@@ -100,14 +101,15 @@ class AverageCounter():
 def prep_image_(file_n):
     query_image = Image.open(os.path.join(
         query_img_path, file_n)).convert('RGB')
-    query_image_tensor = transform(query_image).unsqueeze_(0).cuda()
+    query_image_tensor = transform(query_image).unsqueeze_(0).to(get_device())
     return query_image_tensor
 
 
 model = DenseNet121()
-model.load_state_dict(torch.load(model_weights), strict=False)
+model_weights = './checkpoints/isic_densenet121_embed_256_seed_0_epoch_20_ckpt.pth'
+model.load_state_dict(torch.load(model_weights, map_location='cpu'), strict=False)
 model = model.eval()
-model = model.cuda()
+model = model.to(get_device())
 
 # Logging counter
 ins_avg_c = AverageCounter()
@@ -120,35 +122,21 @@ query_image_list = []
 class_labels = {}
 
 if dataset_type == 'covid':
-    # NOTE: Edit the path to saliency maps and images here
-    main_path = '/data/brian.hu/covid_saliency/simatt/'
-    query_img_path = '/data/brian.hu/COVID/data/test/'
+    # Dùng Path để triệt tiêu lỗi gạch chéo ngược (\) trên Windows
+    main_path = Path(r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\saliency_results\test')
+    query_img_path = Path(r'D:\tranh\Documents\Study\DataMining\X-MIR-Reproduction\test')
     valid_class = ['pneumonia', 'normal']
-    # Unravel labels here
-    with open('test_COVIDx4.txt', 'r') as f:
+    
+    with open('test_split.txt', 'r') as f:
         for line in f.readlines():
             label = line.split()[2]
             if label not in valid_class:
                 label = 'covid'
-            q_na = line.split()[1]
+            # Tách lấy tên file phòng trường hợp trong file txt ghi là 'test/anh.png'
+            q_na = line.split()[1].split('/')[-1].split('\\')[-1] 
             class_labels[q_na] = label
 
-if dataset_type == 'isic':
-    # NOTE: Edit the path to saliency maps and images here
-    main_path = '/data/brian.hu/isic_saliency/sbsm'
-    query_img_path = '/data/brian.hu/isic/ISIC-2017_Test_v2_Data'
-    import pandas as pd
-    valid_class = ['melanoma', 'seborrheic_keratosis']
-    df = pd.read_csv('./ISIC-2017_Test_v2_Part3_GroundTruth_balanced.csv')
-    for kj, im_name in enumerate(df['image_id']):
-        if (df['melanoma'][kj] + df['seborrheic_keratosis'][kj]) > 0:
-            if df['melanoma'][kj]:
-                class_labels[im_name+'.jpg'] = 'melanoma'
-            else:
-                class_labels[im_name+'.jpg'] = 'seborrheic_keratosis'
-        else:
-            class_labels[im_name+'.jpg'] = 'nevi'
-
+# =============== ĐOẠN ĐƯỢC CỨU SỐNG ===============
 transform = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop((224, 224)),
@@ -158,51 +146,77 @@ transform = transforms.Compose([
         std=[0.229, 0.224, 0.225]
     )
 ])
+# ==================================================
 
-# NOTE: Edit the final output json files here
-f = open('./inser_dele_wacv_test_simatt.json', 'w')
-f2 = open('./key_list_wacv_test_simatt.json', 'w')
+# Đổi tên file xuất ra để an toàn
+f = open('./inser_dele_covid_simatt.json', 'w')
+f2 = open('./key_list_covid_simatt.json', 'w')
+
 ins_del_q_dict = {}
 key_dict = {}
 get_insert_dele = InsDel(model)
-for file_n in os.listdir(main_path):
-    print(file_n)
-    query_image_tensor = prep_image_(file_n)
-    retrieval_names = os.listdir(os.path.join(main_path, file_n))
-    for r_n in retrieval_names:
-        try:
-            key_dict[file_n.split('/')[0].split('.')[0]] = [r_n]
-            sal_map[file_n.split(
-                '/')[0].split('.')[0]].append(np.load(os.path.join(main_path, file_n, r_n)))
-            ret_map[file_n.split('/')[0].split('.')[0]].append(prep_image_(os.path.join(query_img_path,
-                                                                                        '.'.join(r_n.split('.')[:-1]))))
-        except KeyError:
-            key_dict[file_n.split('/')[0].split('.')[0]].append(r_n)
-            sal_map[file_n.split('/')[0].split('.')[0]
-                    ] = [np.load(os.path.join(main_path, file_n, r_n))]
-            ret_map[file_n.split('/')[0].split('.')[0]] = [prep_image_(os.path.join(query_img_path,
-                                                                                    '.'.join(r_n.split('.')[:-1])))]
 
-    # Compute local deletion and insertion metric
-    insertion, deletion, i_in, i_del = get_insert_dele.forward(query_image_tensor, ret_map[file_n.split(
-        '/')[0].split('.')[0]], sal_map[file_n.split('/')[0].split('.')[0]])
+print(f"\n[BƯỚC 1] Đang quét tìm .npy trong: {main_path}")
+npy_files = list(main_path.rglob('*.npy'))
+print(f"[BƯỚC 2] Số lượng file .npy tìm thấy: {len(npy_files)}\n")
 
-    avg_insert, avg_del = (sum(insertion)/len(insertion)
-                           ), (sum(deletion)/len(deletion))
-    # Aggerate calculate metric to associated class
-    print(avg_insert, avg_del)
-    try:
-        assert ins_del_q_dict[file_n.split('/')[0].split('.')[0]]
-        ins_del_q_dict[file_n.split(
-            '/')[0].split('.')[0]].append([insertion, deletion])
-    except KeyError:
-        ins_del_q_dict[file_n.split(
-            '/')[0].split('.')[0]] = [insertion, deletion]
-    ins_avg_c.store(class_labels[file_n], avg_insert)
-    del_avg_c.store(class_labels[file_n], avg_del)
-    del sal_map[file_n.split('/')[0].split('.')[0]]
+if len(npy_files) == 0:
+    print("!!! CẢNH BÁO ĐỎ: Python không nhìn thấy bất kỳ file .npy nào !!!")
+    exit()
 
+for sal_path in npy_files:
+    file_n_raw = sal_path.name # Lấy tên (VD: 3d895c52.png.npy)
+    file_n = file_n_raw.replace('.npy', '')
+    base_name = file_n.split('.')[0]
+    
+    img_path = query_img_path / file_n
+    if not img_path.exists():
+        print(f"[-] BỎ QUA: Không tìm thấy ảnh gốc tại {img_path}")
+        continue
+        
+    print(f"Processing: {file_n}")
+    query_image_tensor = prep_image_(str(img_path.name)) # Đọc ảnh gốc
+    
+    # Khởi tạo Dictionary
+    if base_name not in sal_map:
+        sal_map[base_name] = []
+        ret_map[base_name] = []
+        key_dict[base_name] = []
+        
+    sal_map[base_name].append(np.load(str(sal_path)))
+    ret_map[base_name].append(query_image_tensor)
+    key_dict[base_name].append(file_n_raw)
+
+    # Chạy tính toán
+    insertion, deletion, i_in, i_del = get_insert_dele.forward(
+        query_image_tensor, 
+        ret_map[base_name], 
+        sal_map[base_name]
+    )
+
+    avg_insert = sum(insertion) / len(insertion)
+    avg_del = sum(deletion) / len(deletion)
+    
+    if base_name not in ins_del_q_dict:
+        ins_del_q_dict[base_name] = []
+    ins_del_q_dict[base_name].append([insertion, deletion])
+    
+    # Khớp nhãn và lưu điểm
+    if file_n in class_labels:
+        ins_avg_c.store(class_labels[file_n], avg_insert)
+        del_avg_c.store(class_labels[file_n], avg_del)
+    else:
+        print(f"  -> [Cảnh báo] Ảnh '{file_n}' không có trong file test_split.txt")
+        
+    # Dọn RAM
+    del sal_map[base_name]
+    del ret_map[base_name]
+
+# Lưu JSON
 json.dump(ins_del_q_dict, f)
 json.dump(key_dict, f2)
+
+print("\n--- KẾT QUẢ ĐÁNH GIÁ (INSERTION) ---")
 print(ins_avg_c.read_Average())
+print("--- KẾT QUẢ ĐÁNH GIÁ (DELETION) ---")
 print(del_avg_c.read_Average())
